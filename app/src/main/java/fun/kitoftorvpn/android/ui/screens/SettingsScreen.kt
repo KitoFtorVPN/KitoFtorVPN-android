@@ -56,8 +56,6 @@ import `fun`.kitoftorvpn.android.ui.theme.TextMain
 import `fun`.kitoftorvpn.android.ui.theme.TextMuted
 import `fun`.kitoftorvpn.android.vpn.MainViewModel
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.ui.platform.LocalClipboardManager
-import androidx.compose.ui.text.AnnotatedString
 
 @Composable
 fun SettingsScreen(
@@ -89,7 +87,6 @@ fun SettingsScreen(
             refLoading = false
         }
     }
-    val clipboard = LocalClipboardManager.current
 
     // File picker — тот же подход, что и на главном экране.
     val configPickerLauncher = rememberLauncherForActivityResult(
@@ -280,7 +277,8 @@ fun SettingsScreen(
                                         .background(Surface)
                                         .border(1.dp, Border, RoundedCornerShape(10.dp))
                                         .clickable {
-                                            clipboard.setText(AnnotatedString(info.refLink))
+                                            val cm = context.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+                                            cm.setPrimaryClip(android.content.ClipData.newPlainText("ref", info.refLink))
                                             android.widget.Toast.makeText(context, "Ссылка скопирована", android.widget.Toast.LENGTH_SHORT).show()
                                         },
                                     contentAlignment = Alignment.Center

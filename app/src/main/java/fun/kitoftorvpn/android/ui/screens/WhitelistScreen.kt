@@ -155,7 +155,7 @@ fun WhitelistScreen(
                     cursorBrush = SolidColor(Accent),
                     keyboardOptions = KeyboardOptions(
                         capitalization = KeyboardCapitalization.None,
-                        autoCorrect = false
+                        autoCorrectEnabled = false
                     )
                 )
             }

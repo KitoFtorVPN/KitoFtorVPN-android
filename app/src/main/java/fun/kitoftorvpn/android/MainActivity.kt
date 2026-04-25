@@ -29,7 +29,6 @@ import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
-import `fun`.kitoftorvpn.android.BuildConfig
 import `fun`.kitoftorvpn.android.api.SubscriptionApi
 import `fun`.kitoftorvpn.android.api.SubscriptionRepository
 import `fun`.kitoftorvpn.android.auth.AuthManager
@@ -149,7 +148,7 @@ private fun AppNavHost(
     }
     LaunchedEffect(Unit) {
         val latest = UpdateChecker.fetchLatest() ?: return@LaunchedEffect
-        if (UpdateChecker.isNewer(BuildConfig.VERSION_NAME, latest.versionName)) {
+        if (UpdateChecker.isNewer(APP_VERSION, latest.versionName)) {
             updateInfo = latest
         }
     }
@@ -159,7 +158,7 @@ private fun AppNavHost(
         val scope = rememberCoroutineScope()
         UpdateDialog(
             info = info,
-            currentVersion = BuildConfig.VERSION_NAME,
+            currentVersion = APP_VERSION,
             onUpdate = {
                 scope.launch {
                     val file = UpdateInstaller.download(context, info.apkUrl)
