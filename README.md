@@ -10,7 +10,7 @@ Android-клиент KitoFtorVPN на базе AmneziaWG 2.0.
 * Уведомления об окончании подписки
 * Плитка быстрых настроек (Quick Settings Tile) для управления VPN из шторки
 * Хранение конфигов и токенов с шифрованием AES-256-GCM (Android Keystore)
-* Авторизация: email, Google, Telegram, гостевой режим
+* Авторизация: email, Google, гостевой режим
 * Реферальная программа
 * Автообновления через GitHub Releases
 
