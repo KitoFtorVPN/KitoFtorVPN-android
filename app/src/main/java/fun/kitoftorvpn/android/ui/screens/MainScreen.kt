@@ -15,6 +15,10 @@ import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.ui.draw.blur
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.res.painterResource
+import `fun`.kitoftorvpn.android.R
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
@@ -22,6 +26,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -43,6 +48,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.PathFillType
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
@@ -81,7 +87,7 @@ import `fun`.kitoftorvpn.android.vpn.VpnState as RepoVpnState
 import kotlinx.coroutines.delay
 
 enum class VpnUiState { OFF, CONNECTING, ON }
-enum class SubStatus { ACTIVE, EXPIRED, TEST_ENDED, NONE }
+enum class SubStatus { LOADING, ACTIVE, EXPIRED, TEST_ENDED, NONE }
 
 @Composable
 fun MainScreen(
@@ -212,6 +218,15 @@ fun MainScreen(
         expiresInSeconds != null && expiresInSeconds <= 0L
     ) SubStatus.EXPIRED else subStatus
 
+    // Автоотключение VPN при истечении подписки
+    LaunchedEffect(effectiveSubStatus) {
+        if (effectiveSubStatus == SubStatus.EXPIRED || effectiveSubStatus == SubStatus.TEST_ENDED || effectiveSubStatus == SubStatus.NONE) {
+            if (uiState != VpnUiState.OFF) {
+                `fun`.kitoftorvpn.android.vpn.VpnRepository.disconnect()
+            }
+        }
+    }
+
     MainScreenStateless(
         vpnState = uiState,
         timerSeconds = timer,
@@ -279,21 +294,60 @@ fun MainScreenStateless(
 ) {
     var menuOpen by remember { mutableStateOf(false) }
 
-    val bgColor by animateColorAsState(
-        targetValue = when (vpnState) {
-            VpnUiState.ON -> BgOn
-            VpnUiState.CONNECTING -> BgConnecting
-            VpnUiState.OFF -> Bg
+    // ─── Задержка визуального ON до смены IP ─────
+    var ipReady by remember { mutableStateOf(false) }
+    // ─── Задержка визуального OFF до смены IP обратно ─────
+    var disconnectIpReady by remember { mutableStateOf(true) }
+    var wasConnected by remember { mutableStateOf(false) }
+
+    LaunchedEffect(vpnState) {
+        if (vpnState == VpnUiState.ON) {
+            wasConnected = true
+        }
+        if (vpnState != VpnUiState.ON) {
+            ipReady = false
+        }
+        if (vpnState == VpnUiState.OFF && wasConnected) {
+            disconnectIpReady = false
+        }
+    }
+
+    // Визуальный стейт
+    val visualVpnState = when {
+        vpnState == VpnUiState.ON && !ipReady -> VpnUiState.CONNECTING
+        vpnState == VpnUiState.OFF && !disconnectIpReady -> VpnUiState.CONNECTING
+        else -> vpnState
+    }
+
+    val overlayAlpha by androidx.compose.animation.core.animateFloatAsState(
+        targetValue = when (visualVpnState) {
+            VpnUiState.ON -> 0.5f
+            VpnUiState.CONNECTING -> 0.25f
+            VpnUiState.OFF -> 0f
         },
         animationSpec = tween(800),
-        label = "bgColor"
+        label = "overlayAlpha"
     )
 
     Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(bgColor)
+        modifier = Modifier.fillMaxSize()
     ) {
+        // ─── Background image (fullscreen, crop) ────
+        Image(
+            painter = painterResource(R.drawable.bg_main),
+            contentDescription = null,
+            contentScale = ContentScale.Crop,
+            modifier = Modifier.fillMaxSize()
+        )
+
+        // ─── Glass overlay (только при подключении) ──
+        if (overlayAlpha > 0f) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Bg.copy(alpha = overlayAlpha))
+            )
+        }
         Column(
             modifier = Modifier
                 .fillMaxSize()
@@ -307,52 +361,52 @@ fun MainScreenStateless(
                     .height(64.dp),
                 contentAlignment = Alignment.Center
             ) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween
-                ) {
+                Row(horizontalArrangement = Arrangement.Center) {
                     Text(
-                        "KitoFtorVPN",
+                        "KitoFtor",
+                        fontSize = 19.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color(0xFF00D26A)
+                    )
+                    Text(
+                        "VPN",
                         fontSize = 19.sp,
                         fontWeight = FontWeight.Bold,
                         color = TextMain
                     )
-                    Box {
-                        MenuButton(onClick = { menuOpen = !menuOpen })
-                        if (menuOpen) {
-                            Popup(
-                                alignment = Alignment.TopEnd,
-                                offset = androidx.compose.ui.unit.IntOffset(
-                                    x = 0,
-                                    y = with(androidx.compose.ui.platform.LocalDensity.current) { 52.dp.roundToPx() }
-                                ),
-                                properties = PopupProperties(focusable = true),
-                                onDismissRequest = { menuOpen = false }
-                            ) {
-                                DropdownContent(
-                                    isGuest = isGuest,
-                                    onOpenFaq = { menuOpen = false; onOpenFaq() },
-                                    onOpenSettings = { menuOpen = false; onOpenSettings() },
-                                    onLogout = { menuOpen = false; onLogout() },
-                                    onExitGuest = { menuOpen = false; onExitGuest() }
-                                )
-                            }
+                }
+
+                Box(
+                    modifier = Modifier.align(Alignment.CenterStart)
+                ) {
+                    MenuButton(onClick = { menuOpen = !menuOpen })
+                    if (menuOpen) {
+                        Popup(
+                            alignment = Alignment.TopStart,
+                            offset = androidx.compose.ui.unit.IntOffset(
+                                x = 0,
+                                y = with(androidx.compose.ui.platform.LocalDensity.current) { 52.dp.roundToPx() }
+                            ),
+                            properties = PopupProperties(focusable = true),
+                            onDismissRequest = { menuOpen = false }
+                        ) {
+                            DropdownContent(
+                                isGuest = isGuest,
+                                onOpenFaq = { menuOpen = false; onOpenFaq() },
+                                onOpenSettings = { menuOpen = false; onOpenSettings() },
+                                onLogout = { menuOpen = false; onLogout() },
+                                onExitGuest = { menuOpen = false; onExitGuest() }
+                            )
                         }
                     }
                 }
             }
 
-            // ─── Status card ─────────────────────────
+            // ─── Top status card (1 строка для расчёта позиции) ─────
             if (isGuest) {
                 GuestStatusCard()
             } else {
-                SubscriptionCard(
-                    status = subStatus,
-                    timeLeft = timeLeft,
-                    expiresInSeconds = expiresInSeconds,
-                    onRenew = onRenewSubscription
-                )
+                SubscriptionCardCompact(status = subStatus)
             }
 
             // ─── Центр ───────────────────────────────
@@ -364,15 +418,17 @@ fun MainScreenStateless(
                 val canConnect = subStatus == SubStatus.ACTIVE
 
                 when {
-                    !hasConfig -> ImportPrompt(onImport = onImportConfig)
+                    subStatus == SubStatus.LOADING -> {}
 
                     !canConnect -> DisabledPowerWithRenew(
                         subStatus = subStatus,
                         onAction = if (subStatus == SubStatus.NONE) onBuySubscription else onRenewSubscription
                     )
 
+                    !hasConfig -> ImportPrompt(onImport = onImportConfig)
+
                     else -> PowerSection(
-                        state = vpnState,
+                        state = visualVpnState,
                         timerSeconds = timerSeconds,
                         errorText = errorText,
                         onToggle = onToggleVpn,
@@ -382,12 +438,52 @@ fun MainScreenStateless(
             }
         }
 
+        // ─── Полная карточка подписки (overlay сверху, не влияет на layout) ───
+        if (!isGuest) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 28.dp)
+                    .padding(top = 64.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                SubscriptionCard(
+                    status = subStatus,
+                    timeLeft = timeLeft,
+                    expiresInSeconds = expiresInSeconds,
+                    onRenew = onRenewSubscription
+                )
+            }
+        }
+
+        // ─── Нижняя секция: IP + Статус ─────────
+        Column(
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .fillMaxWidth()
+                .padding(horizontal = 28.dp)
+                .padding(bottom = 24.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            BottomIpCard(
+                vpnState = vpnState,
+                onIpReady = { ipReady = true },
+                onDisconnectIpReady = { disconnectIpReady = true }
+            )
+            Spacer(Modifier.height(8.dp))
+            BottomStatusCard(
+                vpnState = visualVpnState,
+                timerSeconds = timerSeconds,
+                isDisconnecting = vpnState == VpnUiState.OFF && !disconnectIpReady
+            )
+        }
+
         // ─── Toast импорта (оверлей снизу) ─────────
         if (importMessage != null) {
             ImportToast(
                 message = importMessage,
                 onDismiss = onDismissImportMessage,
-                modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 32.dp)
+                modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 180.dp)
             )
         }
     }
@@ -403,6 +499,7 @@ private fun SubscriptionCard(
     onRenew: () -> Unit
 ) {
     val (statusText, statusColor) = when (status) {
+        SubStatus.LOADING -> "Загрузка..." to TextMuted
         SubStatus.ACTIVE -> "Активна" to Accent
         SubStatus.EXPIRED -> "Истекла" to Danger
         SubStatus.TEST_ENDED -> "Тест завершён" to Danger
@@ -426,33 +523,95 @@ private fun SubscriptionCard(
                 .border(1.dp, Border, RoundedCornerShape(14.dp))
                 .padding(horizontal = 20.dp)
         ) {
-            StatusRow("Подписка", statusText, statusColor, hasDivider = showTimeRow)
+            StatusRow("Подписка", statusText, statusColor, hasDivider = showTimeRow || (isExpiring && status == SubStatus.ACTIVE))
             if (showTimeRow) {
-                StatusRow("Осталось", timeLeft!!, timeColor, hasDivider = false)
+                StatusRow("Осталось", timeLeft!!, timeColor, hasDivider = isExpiring && status == SubStatus.ACTIVE)
+            }
+            if (isExpiring && status == SubStatus.ACTIVE) {
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(vertical = 14.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text("Подписка заканчивается", fontSize = 15.sp, color = Danger)
+                    Text(
+                        "Продлить",
+                        fontSize = 15.sp,
+                        color = Danger,
+                        fontWeight = FontWeight.SemiBold,
+                        textDecoration = TextDecoration.Underline,
+                        modifier = Modifier.clickable(onClick = onRenew)
+                    )
+                }
             }
         }
+    }
+}
 
-        if (isExpiring && status == SubStatus.ACTIVE) {
-            Spacer(Modifier.height(10.dp))
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(12.dp))
-                    .background(DangerBg06)
-                    .border(1.dp, DangerBg12, RoundedCornerShape(12.dp))
-                    .padding(horizontal = 18.dp, vertical = 14.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween
-            ) {
-                Text("Подписка заканчивается", fontSize = 15.sp, color = Danger)
-                Text(
-                    "Продлить",
-                    fontSize = 15.sp,
-                    color = Danger,
-                    fontWeight = FontWeight.SemiBold,
-                    textDecoration = TextDecoration.Underline,
-                    modifier = Modifier.clickable(onClick = onRenew)
-                )
+// Компактная карточка — только 1 строка "Подписка — статус" (как GuestStatusCard)
+@Composable
+private fun SubscriptionCardCompact(status: SubStatus) {
+    val (statusText, statusColor) = when (status) {
+        SubStatus.LOADING -> "Загрузка..." to TextMuted
+        SubStatus.ACTIVE -> "Активна" to Accent
+        SubStatus.EXPIRED -> "Истекла" to Danger
+        SubStatus.TEST_ENDED -> "Тест завершён" to Danger
+        SubStatus.NONE -> "Нет подписки" to TextMuted
+    }
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(14.dp))
+            .background(Surface)
+            .border(1.dp, Border, RoundedCornerShape(14.dp))
+            .padding(horizontal = 20.dp)
+    ) {
+        StatusRow("Подписка", statusText, statusColor, hasDivider = false)
+    }
+}
+
+// Доп. инфо — "Осталось" и "Заканчивается" — показывается в центре, над кнопкой
+@Composable
+private fun SubscriptionExtraInfo(
+    status: SubStatus,
+    timeLeft: String?,
+    expiresInSeconds: Long?,
+    onRenew: () -> Unit
+) {
+    val isExpiring = expiresInSeconds != null && expiresInSeconds in 1L..259_200L
+    val timeColor = if (isExpiring) Danger else TextMain
+    val showTimeRow = status == SubStatus.ACTIVE &&
+            timeLeft != null &&
+            (expiresInSeconds == null || expiresInSeconds > 0L)
+
+    if (showTimeRow || (isExpiring && status == SubStatus.ACTIVE)) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(14.dp))
+                .background(Surface)
+                .border(1.dp, Border, RoundedCornerShape(14.dp))
+                .padding(horizontal = 20.dp)
+        ) {
+            if (showTimeRow) {
+                StatusRow("Осталось", timeLeft!!, timeColor, hasDivider = isExpiring && status == SubStatus.ACTIVE)
+            }
+            if (isExpiring && status == SubStatus.ACTIVE) {
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(vertical = 14.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text("Подписка заканчивается", fontSize = 15.sp, color = Danger)
+                    Text(
+                        "Продлить",
+                        fontSize = 15.sp,
+                        color = Danger,
+                        fontWeight = FontWeight.SemiBold,
+                        textDecoration = TextDecoration.Underline,
+                        modifier = Modifier.clickable(onClick = onRenew)
+                    )
+                }
             }
         }
     }
@@ -512,112 +671,52 @@ private fun PowerSection(
     onToggle: () -> Unit,
     onDismissError: () -> Unit,
 ) {
-    val statusText = when (state) {
-        VpnUiState.ON -> "Подключено"
-        VpnUiState.CONNECTING -> "Подключение..."
-        VpnUiState.OFF -> "Не подключено"
-    }
-    val hintText = when (state) {
-        VpnUiState.CONNECTING -> "Устанавливаем соединение"
-        VpnUiState.OFF -> "Нажмите для подключения"
-        VpnUiState.ON -> ""  // слот всё равно зарезервирован
-    }
-    val statusColor by animateColorAsState(
-        targetValue = when (state) {
-            VpnUiState.ON -> Accent
-            VpnUiState.CONNECTING -> Warning
-            VpnUiState.OFF -> TextMuted
-        },
-        animationSpec = tween(400),
-        label = "status-color"
-    )
+    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        PowerButton(state = state, onClick = onToggle)
 
-    PowerButton(state = state, onClick = onToggle)
-
-    Spacer(Modifier.height(26.dp))
-    // status — фиксированная высота
-    Box(modifier = Modifier.height(32.dp), contentAlignment = Alignment.Center) {
-        Text(statusText, fontSize = 26.sp, fontWeight = FontWeight.Bold, color = statusColor)
-    }
-    Spacer(Modifier.height(6.dp))
-    // hint — фиксированная высота, пустая строка тоже занимает место
-    Box(modifier = Modifier.height(22.dp), contentAlignment = Alignment.Center) {
-        if (hintText.isNotEmpty()) {
-            Text(hintText, fontSize = 15.sp, color = TextMuted)
+        // Невидимый блок — резервирует высоту как раньше, чтобы кнопка не съезжала
+        Spacer(Modifier.height(26.dp))
+        Box(modifier = Modifier.alpha(0f)) {
+            Column(
+                modifier = Modifier
+                    .padding(horizontal = 20.dp, vertical = 12.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Box(modifier = Modifier.height(32.dp))
+                Spacer(Modifier.height(4.dp))
+                Box(modifier = Modifier.height(22.dp))
+            }
         }
-    }
-    Spacer(Modifier.height(4.dp))
-    // timer — всегда зарезервировано место; когда VPN off, просто пусто
-    Box(modifier = Modifier.height(24.dp), contentAlignment = Alignment.Center) {
-        androidx.compose.animation.AnimatedVisibility(
-            visible = state == VpnUiState.ON,
-            enter = androidx.compose.animation.fadeIn(animationSpec = tween(500)) +
-                    androidx.compose.animation.slideInVertically(
-                        animationSpec = tween(500),
-                        initialOffsetY = { it / 2 }
-                    ),
-            exit = androidx.compose.animation.fadeOut(animationSpec = tween(200))
-        ) {
-            Text(
-                formatTimer(timerSeconds),
-                fontSize = 20.sp,
-                fontWeight = FontWeight.SemiBold,
-                color = Accent
-            )
-        }
-    }
 
-    if (errorText != null) {
-        Spacer(Modifier.height(14.dp))
-        Row(
-            modifier = Modifier
-                .clip(RoundedCornerShape(10.dp))
-                .background(DangerBg06)
-                .border(1.dp, DangerBg12, RoundedCornerShape(10.dp))
-                .padding(horizontal = 14.dp, vertical = 10.dp)
-                .clickable(onClick = onDismissError)
-        ) {
-            Text(errorText, fontSize = 13.sp, color = Danger, textAlign = TextAlign.Center)
+        if (errorText != null) {
+            Spacer(Modifier.height(14.dp))
+            Row(
+                modifier = Modifier
+                    .clip(RoundedCornerShape(10.dp))
+                    .background(DangerBg06)
+                    .border(1.dp, DangerBg12, RoundedCornerShape(10.dp))
+                    .padding(horizontal = 14.dp, vertical = 10.dp)
+                    .clickable(onClick = onDismissError)
+            ) {
+                Text(errorText, fontSize = 13.sp, color = Danger, textAlign = TextAlign.Center)
+            }
         }
     }
 }
 
 @Composable
 private fun PowerButton(state: VpnUiState, onClick: () -> Unit) {
-    val borderColor by animateColorAsState(
-        targetValue = when (state) {
-            VpnUiState.ON -> Accent
-            VpnUiState.CONNECTING -> Warning
-            VpnUiState.OFF -> Border
-        },
-        animationSpec = tween(400),
-        label = "pb-border"
-    )
-    val fillColor by animateColorAsState(
-        targetValue = when (state) {
-            VpnUiState.ON -> AccentBg08
-            VpnUiState.CONNECTING -> WarningBg05
-            VpnUiState.OFF -> Surface
-        },
-        animationSpec = tween(400),
-        label = "pb-fill"
-    )
-    val iconColor by animateColorAsState(
-        targetValue = when (state) {
-            VpnUiState.ON -> Accent
-            VpnUiState.CONNECTING -> Warning
-            VpnUiState.OFF -> TextMuted
-        },
-        animationSpec = tween(400),
-        label = "pb-icon"
-    )
+    // Кнопка всегда одного цвета — как при OFF
+    val fillColor = Surface
+    val borderColor = Border
+    val iconColor = TextMuted
 
     val infinite = rememberInfiniteTransition(label = "pb-infinite")
 
-    // Pulse во время CONNECTING — лёгкое пульсирование всей кнопки
+    // Pulse во время CONNECTING
     val pulse by infinite.animateFloat(
         initialValue = 1f,
-        targetValue = if (state == VpnUiState.CONNECTING) 0.93f else 1f,
+        targetValue = if (state == VpnUiState.CONNECTING) 0.95f else 1f,
         animationSpec = infiniteRepeatable(
             animation = tween(900),
             repeatMode = RepeatMode.Reverse
@@ -625,7 +724,7 @@ private fun PowerButton(state: VpnUiState, onClick: () -> Unit) {
         label = "pulse"
     )
 
-    // Вращение внешнего кольца во время CONNECTING
+    // Вращение кольца при CONNECTING
     val ringRotation by infinite.animateFloat(
         initialValue = 0f,
         targetValue = if (state == VpnUiState.CONNECTING) 360f else 0f,
@@ -636,20 +735,50 @@ private fun PowerButton(state: VpnUiState, onClick: () -> Unit) {
         label = "ring-rot"
     )
 
+    // Glow alpha — мягкое свечение при ON (зелёный) и OFF (красный)
+    val glowAlpha by infinite.animateFloat(
+        initialValue = if (state == VpnUiState.ON || state == VpnUiState.OFF) 0.15f else 0f,
+        targetValue = if (state == VpnUiState.ON || state == VpnUiState.OFF) 0.35f else 0f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(2000),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "glow"
+    )
+
     val interaction = remember { MutableInteractionSource() }
+
     Box(
         modifier = Modifier.size(210.dp),
         contentAlignment = Alignment.Center
     ) {
-        // Внешнее вращающееся кольцо (видимо только во время CONNECTING)
+        // Glow-подсветка при ON (зелёный) или OFF (красный)
+        if (state == VpnUiState.ON || state == VpnUiState.OFF) {
+            val glowColor = if (state == VpnUiState.ON) Accent else Danger
+            Box(
+                modifier = Modifier
+                    .size(200.dp)
+                    .clip(CircleShape)
+                    .background(glowColor.copy(alpha = glowAlpha))
+            )
+        }
+
+        // Внешнее тонкое кольцо (всегда видно)
+        Box(
+            modifier = Modifier
+                .size(205.dp)
+                .border(1.dp, TextMuted.copy(alpha = 0.15f), CircleShape)
+        )
+
+        // Вращающееся кольцо при CONNECTING
         if (state == VpnUiState.CONNECTING) {
             androidx.compose.foundation.Canvas(
                 modifier = Modifier.size(210.dp).graphicsRotate(ringRotation)
             ) {
-                val strokeWidth = 4.dp.toPx()
+                val strokeWidth = 3.dp.toPx()
                 val diameter = size.minDimension - strokeWidth
                 drawArc(
-                    color = Warning,
+                    color = Color(0xFFFFB74D),
                     startAngle = -90f,
                     sweepAngle = 80f,
                     useCenter = false,
@@ -663,26 +792,35 @@ private fun PowerButton(state: VpnUiState, onClick: () -> Unit) {
             }
         }
 
+        // Основная кнопка
         Box(
             modifier = Modifier
                 .size(190.dp)
                 .graphicsScale(pulse)
                 .clip(CircleShape)
                 .background(fillColor)
-                .border(4.dp, borderColor, CircleShape)
+                .border(3.dp, borderColor, CircleShape)
                 .clickable(
                     interactionSource = interaction,
-                    indication = ripple(bounded = false, radius = 95.dp, color = iconColor),
+                    indication = ripple(bounded = false, radius = 95.dp, color = TextMuted),
                     enabled = state != VpnUiState.CONNECTING,
                     onClick = onClick
                 ),
             contentAlignment = Alignment.Center
         ) {
-            Image(
-                imageVector = powerVector(iconColor),
-                contentDescription = "Power",
-                modifier = Modifier.size(60.dp)
-            )
+            // Внутреннее декоративное кольцо
+            Box(
+                modifier = Modifier
+                    .size(160.dp)
+                    .border(1.dp, TextMuted.copy(alpha = 0.1f), CircleShape),
+                contentAlignment = Alignment.Center
+            ) {
+                Image(
+                    imageVector = powerVector(iconColor),
+                    contentDescription = "Power",
+                    modifier = Modifier.size(60.dp)
+                )
+            }
         }
     }
 }
@@ -696,13 +834,41 @@ private fun Modifier.graphicsScale(scale: Float): Modifier =
 @Composable
 private fun ImportPrompt(onImport: () -> Unit) {
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
-        Text(
-            "Для подключения загрузите\nфайл конфигурации (.conf)\nиз личного кабинета или бота",
-            fontSize = 17.sp,
-            color = TextDim,
-            textAlign = TextAlign.Center,
-            lineHeight = 28.sp
-        )
+        // ─── Status card (static size) ────────
+        Box(contentAlignment = Alignment.Center) {
+            Column(
+                modifier = Modifier
+                    .alpha(0f)
+                    .padding(horizontal = 20.dp, vertical = 12.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Box(modifier = Modifier.height(32.dp), contentAlignment = Alignment.Center) {
+                    Text("Не подключено", fontSize = 26.sp, fontWeight = FontWeight.Bold)
+                }
+                Spacer(Modifier.height(4.dp))
+                Box(modifier = Modifier.height(22.dp), contentAlignment = Alignment.Center) {
+                    Text("Нажмите для подключения", fontSize = 15.sp)
+                }
+            }
+            Column(
+                modifier = Modifier
+                    .matchParentSize()
+                    .clip(RoundedCornerShape(14.dp))
+                    .background(Surface)
+                    .border(1.dp, Border, RoundedCornerShape(14.dp))
+                    .padding(horizontal = 20.dp, vertical = 12.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Box(modifier = Modifier.height(32.dp), contentAlignment = Alignment.Center) {
+                    Text("Нет конфига", fontSize = 26.sp, fontWeight = FontWeight.Bold, color = TextMuted)
+                }
+                Spacer(Modifier.height(4.dp))
+                Box(modifier = Modifier.height(22.dp), contentAlignment = Alignment.Center) {
+                    Text("Загрузите .conf файл", fontSize = 15.sp, color = TextMuted)
+                }
+            }
+        }
+
         Spacer(Modifier.height(22.dp))
         // Полноценная кнопка вместо маленькой ссылки — удобнее на телефоне
         Box(
@@ -735,37 +901,16 @@ private fun ImportPrompt(onImport: () -> Unit) {
 @Composable
 private fun DisabledPowerWithRenew(subStatus: SubStatus, onAction: () -> Unit) {
     val label = if (subStatus == SubStatus.NONE) "Оформить подписку" else "Продлить подписку"
-    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-        Box(
-            modifier = Modifier
-                .size(190.dp)
-                .clip(CircleShape)
-                .background(Surface)
-                .border(4.dp, Border, CircleShape)
-                .alpha(0.5f),
-            contentAlignment = Alignment.Center
-        ) {
-            Image(
-                imageVector = powerVector(TextMuted),
-                contentDescription = null,
-                modifier = Modifier.size(60.dp)
-            )
-        }
-        Spacer(Modifier.height(26.dp))
-        Text("Не подключено", fontSize = 26.sp, fontWeight = FontWeight.Bold, color = TextMuted)
-        Spacer(Modifier.height(16.dp))
-        Box(
-            modifier = Modifier
-                .height(54.dp)
-                .clip(RoundedCornerShape(12.dp))
-                .background(DangerBg08)
-                .border(1.dp, DangerBg15, RoundedCornerShape(12.dp))
-                .clickable(onClick = onAction)
-                .padding(horizontal = 30.dp),
-            contentAlignment = Alignment.Center
-        ) {
-            Text(label, fontSize = 17.sp, fontWeight = FontWeight.SemiBold, color = Danger)
-        }
+    Box(
+        modifier = Modifier
+            .height(56.dp)
+            .clip(RoundedCornerShape(14.dp))
+            .background(Accent)
+            .clickable(onClick = onAction)
+            .padding(horizontal = 36.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Text(label, fontSize = 17.sp, fontWeight = FontWeight.Bold, color = Bg)
     }
 }
 
@@ -827,12 +972,13 @@ private fun MenuButton(onClick: () -> Unit) {
             ),
         contentAlignment = Alignment.Center
     ) {
-        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
             repeat(3) {
                 Box(
                     modifier = Modifier
-                        .size(4.dp)
-                        .clip(CircleShape)
+                        .width(20.dp)
+                        .height(2.dp)
+                        .clip(RoundedCornerShape(1.dp))
                         .background(TextDim)
                 )
             }
@@ -898,11 +1044,103 @@ private fun MenuItem(
 
 // ─── Утилиты ──────────────────────────────────────────────
 
+// ─── Нижние карточки ──────────────────────────────────────
+
+@Composable
+private fun BottomIpCard(vpnState: VpnUiState, onIpReady: () -> Unit = {}, onDisconnectIpReady: () -> Unit = {}) {
+    var currentIp by remember { mutableStateOf("...") }
+    var isVpnIp by remember { mutableStateOf(false) }
+
+    LaunchedEffect(vpnState) {
+        if (vpnState == VpnUiState.CONNECTING) return@LaunchedEffect
+        kotlinx.coroutines.delay(if (vpnState == VpnUiState.ON) 1500L else 500L)
+        try {
+            val url = java.net.URL("https://api.ipify.org")
+            val ip = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                url.readText().trim()
+            }
+            currentIp = ip
+            isVpnIp = vpnState == VpnUiState.ON
+            if (vpnState == VpnUiState.ON) onIpReady()
+            if (vpnState == VpnUiState.OFF) onDisconnectIpReady()
+        } catch (_: Exception) {
+            currentIp = "—"
+            if (vpnState == VpnUiState.ON) onIpReady()
+            if (vpnState == VpnUiState.OFF) onDisconnectIpReady()
+        }
+    }
+
+    val flag = if (isVpnIp) "\uD83C\uDDF3\uD83C\uDDF1" else "\uD83C\uDDF7\uD83C\uDDFA"
+    val country = if (isVpnIp) "NL" else "RU"
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(14.dp))
+            .background(Surface)
+            .border(1.dp, Border, RoundedCornerShape(14.dp))
+            .padding(horizontal = 20.dp, vertical = 14.dp),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.Center
+        ) {
+            Text("Ваш IP — ", fontSize = 14.sp, color = TextDim)
+            Text(currentIp, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = TextMain)
+            Text("  $flag $country", fontSize = 14.sp, color = TextMain)
+        }
+    }
+}
+
+@Composable
+private fun BottomStatusCard(vpnState: VpnUiState, timerSeconds: Long, isDisconnecting: Boolean = false) {
+    val statusText = when {
+        isDisconnecting && vpnState == VpnUiState.CONNECTING -> "Отключение..."
+        vpnState == VpnUiState.ON -> "Подключено"
+        vpnState == VpnUiState.CONNECTING -> "Подключение..."
+        else -> "Не подключено"
+    }
+    val hintText = when {
+        isDisconnecting && vpnState == VpnUiState.CONNECTING -> "Разрываем соединение с VPN"
+        vpnState == VpnUiState.CONNECTING -> "Устанавливаем соединение с VPN"
+        vpnState == VpnUiState.OFF -> "Нажмите для подключения"
+        vpnState == VpnUiState.ON -> formatTimer(timerSeconds)
+        else -> ""
+    }
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(14.dp))
+            .background(Surface)
+            .border(1.dp, Border, RoundedCornerShape(14.dp))
+            .padding(horizontal = 20.dp, vertical = 12.dp),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        Text(statusText, fontSize = 18.sp, fontWeight = FontWeight.Bold, color = TextMuted)
+        Spacer(Modifier.height(2.dp))
+        Text(hintText, fontSize = 14.sp, color = TextMuted)
+    }
+}
+
 private fun formatTimer(seconds: Long): String {
-    val h = seconds / 3600
+    val days = seconds / 86400
+    val h = (seconds % 86400) / 3600
     val m = (seconds % 3600) / 60
     val s = seconds % 60
-    return "%02d:%02d:%02d".format(h, m, s)
+    val hms = "%02d:%02d:%02d".format(h, m, s)
+    return if (days > 0) {
+        val dayWord = when {
+            days % 100 in 11..19 -> "дней"
+            days % 10 == 1L -> "день"
+            days % 10 in 2..4 -> "дня"
+            else -> "дней"
+        }
+        "$days $dayWord $hms"
+    } else {
+        hms
+    }
 }
 
 // ─── Icons ────────────────────────────────────────────────

@@ -29,6 +29,7 @@ import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
+import `fun`.kitoftorvpn.android.BuildConfig
 import `fun`.kitoftorvpn.android.api.SubscriptionApi
 import `fun`.kitoftorvpn.android.api.SubscriptionRepository
 import `fun`.kitoftorvpn.android.auth.AuthManager
@@ -253,7 +254,7 @@ private fun AppNavHost(
                 SubscriptionApi.SubInfo.Status.EXPIRED -> SubStatus.EXPIRED
                 SubscriptionApi.SubInfo.Status.TEST_ENDED -> SubStatus.TEST_ENDED
                 SubscriptionApi.SubInfo.Status.NONE -> SubStatus.NONE
-                else -> SubStatus.ACTIVE   // до первого ответа показываем optimistic
+                else -> SubStatus.LOADING   // до первого ответа — загрузка
             }
 
             val expiresAtMs: Long? = if (isGuest) null else {

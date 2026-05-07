@@ -69,13 +69,22 @@ fun LoginScreen(
         ) {
             ShieldLogo()
             Spacer(Modifier.height(14.dp))
-            Text(
-                "KitoFtorVPN",
-                fontSize = 26.sp,
-                fontWeight = FontWeight.Bold,
-                letterSpacing = (-0.3).sp,
-                color = TextMain
-            )
+            Row {
+                Text(
+                    "KitoFtor",
+                    fontSize = 26.sp,
+                    fontWeight = FontWeight.Bold,
+                    letterSpacing = (-0.3).sp,
+                    color = androidx.compose.ui.graphics.Color(0xFF00D26A)
+                )
+                Text(
+                    "VPN",
+                    fontSize = 26.sp,
+                    fontWeight = FontWeight.Bold,
+                    letterSpacing = (-0.3).sp,
+                    color = TextMain
+                )
+            }
             Spacer(Modifier.height(6.dp))
             Text(
                 "Безопасный интернет",
