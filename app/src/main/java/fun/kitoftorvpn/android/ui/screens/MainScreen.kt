@@ -294,21 +294,30 @@ fun MainScreenStateless(
 ) {
     var menuOpen by remember { mutableStateOf(false) }
 
-    // ─── Задержка визуального ON до смены IP ─────
-    var ipReady by remember { mutableStateOf(false) }
-    // ─── Задержка визуального OFF до смены IP обратно ─────
+    // ─── Отслеживаем только нажатия кнопки, не холодный старт ─────
+    var ipReady by remember { mutableStateOf(true) }
     var disconnectIpReady by remember { mutableStateOf(true) }
-    var wasConnected by remember { mutableStateOf(false) }
+    // Запоминаем предыдущее состояние чтобы отличить реальный переход от холодного старта
+    var prevVpnState by remember { mutableStateOf<VpnUiState?>(null) }
 
     LaunchedEffect(vpnState) {
-        if (vpnState == VpnUiState.ON) {
-            wasConnected = true
-        }
-        if (vpnState != VpnUiState.ON) {
+        val prev = prevVpnState
+        prevVpnState = vpnState
+
+        // Первый запуск (prev == null) — не трогаем, ipReady/disconnectIpReady уже true
+        if (prev == null) return@LaunchedEffect
+
+        // Реальный переход CONNECTING → ON (пользователь подключился)
+        if (prev == VpnUiState.CONNECTING && vpnState == VpnUiState.ON) {
             ipReady = false
         }
-        if (vpnState == VpnUiState.OFF && wasConnected) {
+        // Реальный переход ON → OFF (пользователь отключился)
+        if (prev == VpnUiState.ON && vpnState == VpnUiState.OFF) {
             disconnectIpReady = false
+        }
+        // Реальный переход OFF → CONNECTING (нажал подключить)
+        if (prev == VpnUiState.OFF && vpnState == VpnUiState.CONNECTING) {
+            ipReady = false
         }
     }
 
@@ -1048,8 +1057,16 @@ private fun MenuItem(
 
 @Composable
 private fun BottomIpCard(vpnState: VpnUiState, onIpReady: () -> Unit = {}, onDisconnectIpReady: () -> Unit = {}) {
-    var currentIp by remember { mutableStateOf("...") }
-    var isVpnIp by remember { mutableStateOf(false) }
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val cachedIp = remember { `fun`.kitoftorvpn.android.settings.AppPreferences.getLastIp(context) }
+    val cachedVpnOn = remember { `fun`.kitoftorvpn.android.settings.AppPreferences.getLastVpnOn(context) }
+
+    // Начальное значение: если состояние совпадает с кэшем — показываем кэш, иначе "..."
+    val initialIp = if (cachedIp != null && ((vpnState == VpnUiState.ON) == cachedVpnOn)) cachedIp else "..."
+    val initialIsVpn = if (cachedIp != null && ((vpnState == VpnUiState.ON) == cachedVpnOn)) cachedVpnOn else vpnState == VpnUiState.ON
+
+    var currentIp by remember { mutableStateOf(initialIp) }
+    var isVpnIp by remember { mutableStateOf(initialIsVpn) }
 
     LaunchedEffect(vpnState) {
         if (vpnState == VpnUiState.CONNECTING) return@LaunchedEffect
@@ -1061,6 +1078,7 @@ private fun BottomIpCard(vpnState: VpnUiState, onIpReady: () -> Unit = {}, onDis
             }
             currentIp = ip
             isVpnIp = vpnState == VpnUiState.ON
+            `fun`.kitoftorvpn.android.settings.AppPreferences.saveIpState(context, ip, vpnState == VpnUiState.ON)
             if (vpnState == VpnUiState.ON) onIpReady()
             if (vpnState == VpnUiState.OFF) onDisconnectIpReady()
         } catch (_: Exception) {
@@ -1118,9 +1136,9 @@ private fun BottomStatusCard(vpnState: VpnUiState, timerSeconds: Long, isDisconn
             .padding(horizontal = 20.dp, vertical = 12.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        Text(statusText, fontSize = 18.sp, fontWeight = FontWeight.Bold, color = TextMuted)
+        Text(statusText, fontSize = 18.sp, fontWeight = FontWeight.Bold, color = TextMain)
         Spacer(Modifier.height(2.dp))
-        Text(hintText, fontSize = 14.sp, color = TextMuted)
+        Text(hintText, fontSize = if (vpnState == VpnUiState.ON) 20.sp else 14.sp, color = TextMain)
     }
 }
 

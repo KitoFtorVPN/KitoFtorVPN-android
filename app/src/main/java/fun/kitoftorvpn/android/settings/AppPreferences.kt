@@ -63,4 +63,19 @@ object AppPreferences {
     fun setSubType(ctx: Context, value: String) {
         prefs(ctx).edit().putString(KEY_SUB_TYPE, value).apply()
     }
+
+    // ─── IP cache ───────────────────────────────────
+    private const val KEY_LAST_IP = "last_ip"
+    private const val KEY_LAST_VPN_ON = "last_vpn_on"
+
+    fun getLastIp(ctx: Context): String? = prefs(ctx).getString(KEY_LAST_IP, null)
+
+    fun getLastVpnOn(ctx: Context): Boolean = prefs(ctx).getBoolean(KEY_LAST_VPN_ON, false)
+
+    fun saveIpState(ctx: Context, ip: String, vpnOn: Boolean) {
+        prefs(ctx).edit()
+            .putString(KEY_LAST_IP, ip)
+            .putBoolean(KEY_LAST_VPN_ON, vpnOn)
+            .apply()
+    }
 }
