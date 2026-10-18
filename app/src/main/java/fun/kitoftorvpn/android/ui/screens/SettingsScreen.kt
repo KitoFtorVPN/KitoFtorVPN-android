@@ -89,29 +89,38 @@ fun SettingsScreen(
     }
 
     // File picker — тот же подход, что и на главном экране.
+    val openDocLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocument()
+    ) { uri: Uri? -> if (uri != null) vm.importConfig(uri) }
+
     val configPickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.StartActivityForResult()
     ) { result ->
         val uri: Uri? = result.data?.data
             ?: result.data?.clipData?.takeIf { it.itemCount > 0 }?.getItemAt(0)?.uri
-        if (uri != null) vm.importConfig(uri)
+        if (uri != null) {
+            vm.importConfig(uri)
+        } else {
+            android.widget.Toast.makeText(context, "Файл не выбран", android.widget.Toast.LENGTH_SHORT).show()
+        }
     }
 
     fun launchConfigPicker() {
-        val mimes = arrayOf(
-            "text/plain",
-            "application/octet-stream",
-            "application/x-wireguard-config"
-        )
+        // Без EXTRA_MIME_TYPES — иначе на Tecno/Infinix/Xiaomi .conf серый и не выбирается.
         val intent = Intent(Intent.ACTION_GET_CONTENT).apply {
             addCategory(Intent.CATEGORY_OPENABLE)
             type = "*/*"
-            putExtra(Intent.EXTRA_MIME_TYPES, mimes)
         }
         try {
             configPickerLauncher.launch(Intent.createChooser(intent, "Выберите .conf файл"))
         } catch (e: Exception) {
-            android.util.Log.e("ImportConfig", "No file picker available", e)
+            android.util.Log.e("ImportConfig", "GET_CONTENT failed, trying OPEN_DOCUMENT", e)
+            try {
+                openDocLauncher.launch(arrayOf("*/*"))
+            } catch (e2: Exception) {
+                android.util.Log.e("ImportConfig", "No file picker available", e2)
+                android.widget.Toast.makeText(context, "На устройстве нет файлового менеджера", android.widget.Toast.LENGTH_LONG).show()
+            }
         }
     }
 

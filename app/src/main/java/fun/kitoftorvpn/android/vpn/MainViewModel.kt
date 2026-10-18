@@ -133,9 +133,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 } catch (_: Throwable) { /* GET_CONTENT / некорректный URI — игнор */ }
 
                 try {
-                    val text = ctx.contentResolver.openInputStream(uri)?.use { stream ->
-                        stream.bufferedReader().readText()
-                    }
+                    val bytes = ctx.contentResolver.openInputStream(uri)?.use { it.readBytes() }
+                    val text = bytes?.let { decodeConfigBytes(it) }
                     Log.d("ImportConfig", "read ${text?.length ?: 0} chars from $uri")
                     if (text.isNullOrBlank()) {
                         "Файл пустой или не удалось прочитать."
@@ -158,6 +157,27 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 _importMessage.value = result
             }
         }
+    }
+
+    /**
+     * Декодирует байты файла с учётом кодировки. Конфиги, сохранённые в Блокноте
+     * Windows или некоторыми приложениями, бывают в UTF-16 — при чтении как UTF-8
+     * там нули между символами и проверка [Interface]/[Peer] не проходит.
+     */
+    private fun decodeConfigBytes(b: ByteArray): String {
+        if (b.size >= 2 && b[0] == 0xFF.toByte() && b[1] == 0xFE.toByte())
+            return String(b, 2, b.size - 2, Charsets.UTF_16LE)
+        if (b.size >= 2 && b[0] == 0xFE.toByte() && b[1] == 0xFF.toByte())
+            return String(b, 2, b.size - 2, Charsets.UTF_16BE)
+        // UTF-16 без BOM: много нулевых байт на нечётных/чётных позициях.
+        if (b.size >= 4) {
+            val zerosOdd = (1 until b.size step 2).count { b[it] == 0.toByte() }
+            val zerosEven = (0 until b.size step 2).count { b[it] == 0.toByte() }
+            val half = b.size / 2
+            if (zerosOdd > half * 0.4) return String(b, Charsets.UTF_16LE)
+            if (zerosEven > half * 0.4) return String(b, Charsets.UTF_16BE)
+        }
+        return String(b, Charsets.UTF_8)
     }
 
     fun deleteConfig() {

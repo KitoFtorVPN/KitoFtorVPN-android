@@ -181,29 +181,28 @@ fun MainScreen(
     }
 
     fun launchConfigPicker() {
-        val mimes = arrayOf(
-            "text/plain",
-            "application/octet-stream",
-            "application/x-wireguard-config"
-        )
-
-        // На Samsung SAF DocumentsUI недоступен — работает только GET_CONTENT через
-        // системный chooser (3 варианта: Галерея/Звук/Мои файлы). Выбор "Мои файлы"
-        // позволяет найти .conf.
+        // ВАЖНО: НЕ передаём EXTRA_MIME_TYPES. На Tecno/Infinix (HiOS/XOS), Xiaomi и др.
+        // файлы .conf получают «неизвестный» MIME, и при фильтре они видны в списке,
+        // но серые/некликабельные. Принимаем любой файл, а формат проверяем
+        // по содержимому ([Interface]/[Peer]) уже после выбора.
         val intent = Intent(Intent.ACTION_GET_CONTENT).apply {
             addCategory(Intent.CATEGORY_OPENABLE)
             type = "*/*"
-            putExtra(Intent.EXTRA_MIME_TYPES, mimes)
         }
         try {
             configPickerLauncher.launch(Intent.createChooser(intent, "Выберите .conf файл"))
         } catch (e: Exception) {
-            android.util.Log.e("ImportConfig", "No file picker available", e)
-            android.widget.Toast.makeText(
-                context,
-                "На устройстве нет файлового менеджера",
-                android.widget.Toast.LENGTH_LONG
-            ).show()
+            android.util.Log.e("ImportConfig", "GET_CONTENT failed, trying OPEN_DOCUMENT", e)
+            try {
+                openDocLauncher.launch(arrayOf("*/*"))
+            } catch (e2: Exception) {
+                android.util.Log.e("ImportConfig", "No file picker available", e2)
+                android.widget.Toast.makeText(
+                    context,
+                    "На устройстве нет файлового менеджера",
+                    android.widget.Toast.LENGTH_LONG
+                ).show()
+            }
         }
     }
 
