@@ -1,94 +1,78 @@
-# KitoFtorVPN Desktop
+# KitoFtorVPN Android
 
-Windows-клиент KitoFtorVPN на базе AmneziaWG. Поддерживает конфигурации AmneziaWG 2.0 и 3.1.
+Android-клиент KitoFtorVPN на базе AmneziaWG 2.0.
 
 ## Возможности
 
-- Подключение к VPN одним кликом
-- Обход VPN для выбранных сайтов (split tunneling) — применяется на живом соединении, без переподключения
-- Защита от утечек IPv6
-- Автозапуск при старте Windows, в том числе свёрнутым в трей
-- Автоподключение при запуске
-- Хранение конфигурации с шифрованием Windows DPAPI
-- Импорт конфигурации из файла `.conf` (его выдаёт администратор)
-- Автообновления через GitHub Releases
+* Подключение к VPN одним нажатием
+* Обход VPN для выбранных сайтов (split tunneling)
+* Исключение приложений из VPN-туннеля
+* Уведомления об окончании подписки
+* Плитка быстрых настроек (Quick Settings Tile) для управления VPN из шторки
+* Хранение конфигов и токенов с шифрованием AES-256-GCM (Android Keystore)
+* Авторизация: email, Google, гостевой режим
+* Реферальная программа
+* Автообновления через GitHub Releases
 
 ## Установка
 
-Скачай последнюю версию `KitoFtorVPN-Setup.exe` со страницы [Releases](https://github.com/KitoFtorVPN/KitoFtorVPN-desktop/releases) и запусти.
+Скачай последнюю версию `KitoFtorVPN.apk` со страницы [Releases](https://github.com/KitoFtorVPN/KitoFtorVPN-android/releases) и установи.
 
-Файл конфигурации (`.conf`) выдаёт администратор. Один конфиг — одно устройство.
-
-Для работы приложения требуются права администратора (необходимы для создания TUN-интерфейса и настройки маршрутов).
+При первой установке Android попросит разрешение на установку приложений из этого источника — это нормально.
 
 ## Требования
 
-- Windows 10 / 11 x64
+* Android 8.0 (API 26) и выше
 
 ## Стек
 
-- [Electron](https://www.electronjs.org/) — UI (HTML/CSS/JS)
-- [amneziawg-go](https://github.com/amnezia-vpn/amneziawg-go) — VPN-движок (Go), версия с поддержкой AmneziaWG 3.1
-- [Wintun](https://www.wintun.net/) — TUN-драйвер
-- [electron-builder](https://www.electron.build/) — сборка установщика
-- [electron-updater](https://github.com/electron-userland/electron-updater) — автообновления
-
-## Как это устроено
-
-Приложение состоит из двух частей.
-
-`kitoftor-tunnel.exe` — служба Windows, работающая в фоне под системной учётной записью. Она поднимает и опускает WireGuard-туннель, правит таблицу маршрутов и настраивает DNS. Служба создаётся один раз и дальше просто живёт в фоне, ничего не делая, пока туннель не нужен.
-
-Electron-приложение — это интерфейс. С службой оно общается через именованный канал `\\.\pipe\KitoFtorVPNTunnel`, доступный только SYSTEM и администраторам: подключение, отключение, опрос состояния и обновление списка обхода передаются туда напрямую, без запуска отдельных процессов.
-
-Обход VPN сделан через персональные маршруты: адреса из белого списка получают маршрут через физический шлюз, а он выигрывает у общего маршрута туннеля. Поэтому список меняется на лету, а конфигурация уходит в туннель нетронутой.
+* [Kotlin](https://kotlinlang.org/) + [Jetpack Compose](https://developer.android.com/jetpack/compose) — UI
+* [amneziawg-android](https://github.com/amnezia-vpn/amneziawg-android) — VPN-движок
+* [AndroidX Security Crypto](https://developer.android.com/jetpack/androidx/releases/security) — шифрование хранилища
+* [Navigation Compose](https://developer.android.com/jetpack/compose/navigation) — навигация
+* [Gradle](https://gradle.org/) — сборка
 
 ## Сборка из исходников
 
-Требуется Node.js 24+ и Go 1.26+.
+Требуется Android Studio (Iguana или новее) и JDK 17.
 
-```bash
-# Go-хелпер (собирается прямо в bin/, откуда его забирает electron-builder)
-cd kitoftor-tunnel
-go build -ldflags "-s -w" -o ..\bin\kitoftor-tunnel.exe .
-cd ..
+```
+# Открыть проект в Android Studio
+File → Open → выбрать папку проекта
 
-# Установка зависимостей
-npm install
+# Сборка debug-версии
+./gradlew assembleDebug
 
-# Запуск в режиме разработки
-npm start
-
-# Сборка установщика
-npm run dist
-
-# Сборка и публикация релиза на GitHub (нужен GH_TOKEN)
-npm run publish
+# Сборка release-версии (требуется keystore)
+./gradlew assembleRelease
 ```
 
-Установщик появится в папке `dist/`.
-
-В PowerShell команды `npm` может блокировать политика выполнения скриптов — тогда пиши `npm.cmd`.
+APK появится в `app/build/outputs/apk/`.
 
 ## Структура
 
 ```
-KitoFtorVPN/
-├── main.js           — главный процесс Electron
-├── preload.js        — IPC-мост для renderer-процесса
-├── package.json      — зависимости и конфиг electron-builder
-├── ui/               — HTML-страницы интерфейса
-│   ├── main.html
-│   ├── settings.html
-│   ├── whitelist.html
-│   ├── update.html
-│   └── import.html
-├── kitoftor-tunnel/  — исходники Go-службы
-│   ├── main.go
-│   ├── go.mod
-│   └── go.sum
-├── bin/              — собранный Go-хелпер и TUN-драйвер
-│   ├── kitoftor-tunnel.exe
-│   └── wintun.dll
-└── build/            — иконки приложения, трея и NSIS-скрипт
+KitoFtorVPN-android/
+├── app/
+│   └── src/main/
+│       ├── AndroidManifest.xml
+│       ├── java/fun/kitoftorvpn/android/
+│       │   ├── MainActivity.kt
+│       │   ├── api/             — клиент API кабинета (sub, referral)
+│       │   ├── auth/            — OAuth-флоу через браузер
+│       │   ├── notifications/   — напоминания о подписке (AlarmManager)
+│       │   ├── perapp/          — исключения приложений из VPN
+│       │   ├── settings/        — AppPreferences
+│       │   ├── storage/         — ConfigStore (зашифрованное хранилище)
+│       │   ├── ui/              — экраны Compose
+│       │   ├── update/          — автообновление APK
+│       │   ├── vpn/             — VPN-репозиторий, Quick Tile, Receiver
+│       │   └── whitelist/       — split tunneling
+│       └── res/                 — иконки, темы, строки
+├── app/build.gradle.kts         — конфиг сборки
+└── gradle/libs.versions.toml    — зависимости
 ```
+
+## Сайт
+
+[kitoftorvpn.fun](https://kitoftorvpn.fun)
