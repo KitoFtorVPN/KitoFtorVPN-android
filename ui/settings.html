@@ -1,0 +1,421 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'; frame-src 'none'">
+  <meta charset="UTF-8">
+  <title>Настройки — KitoFtorVPN</title>
+  <style>
+    :root {
+      --bg: #0b1120;
+      --surface: #111827;
+      --border: rgba(255,255,255,0.06);
+      --accent: #10b981;
+      --text: #f1f5f9;
+      --text-dim: #94a3b8;
+      --text-muted: #475569;
+      --danger: #f43f5e;
+    }
+
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      font-family: -apple-system, 'Segoe UI', system-ui, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+      user-select: none;
+      overflow: hidden;
+    }
+
+    .titlebar {
+      display: flex; justify-content: space-between; align-items: center;
+      height: 38px; padding: 0 12px;
+      background: rgba(0,0,0,0.2);
+      border-bottom: 1px solid var(--border);
+      -webkit-app-region: drag; flex-shrink: 0;
+    }
+    .titlebar-title { font-size: 12px; font-weight: 600; color: var(--text-dim); }
+    .titlebar-btns { -webkit-app-region: no-drag; }
+    .titlebar-btns button {
+      background: none; border: none; color: var(--text-muted);
+      cursor: pointer; width: 30px; height: 26px; border-radius: 6px;
+      display: flex; align-items: center; justify-content: center;
+      transition: all 0.15s;
+    }
+    .titlebar-btns button:hover { background: rgba(255,255,255,0.06); color: var(--text-dim); }
+
+    .content {
+      flex: 1; padding: 16px 24px;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+    }
+    .content::-webkit-scrollbar { width: 4px; }
+    .content::-webkit-scrollbar-track { background: transparent; }
+    .content::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.08); border-radius: 2px; }
+
+    .section-title {
+      font-size: 11px; font-weight: 600;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.8px;
+      margin-bottom: 2px;
+      margin-top: 8px;
+      padding-top: 8px;
+      border-top: 1px solid var(--border);
+    }
+    .section-title:first-child { margin-top: 0; padding-top: 0; border-top: none; }
+
+    .setting-row {
+      display: flex; justify-content: space-between; align-items: center;
+      padding: 7px 2px;
+    }
+
+    .setting-info {
+      flex: 1; margin-right: 16px;
+      text-align: left;
+    }
+    .setting-label {
+      font-size: 14px; font-weight: 600;
+      margin-bottom: 2px;
+      text-align: left;
+    }
+    .setting-desc {
+      font-size: 12px; color: var(--text-dim);
+      line-height: 1.4;
+      text-align: left;
+    }
+
+    /* Toggle switch */
+    .toggle {
+      position: relative;
+      width: 44px; height: 24px;
+      flex-shrink: 0;
+    }
+    .toggle input {
+      opacity: 0; width: 0; height: 0;
+    }
+    .toggle-track {
+      position: absolute; inset: 0;
+      background: rgba(255,255,255,0.08);
+      border-radius: 12px;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+    .toggle-track::after {
+      content: '';
+      position: absolute;
+      top: 3px; left: 3px;
+      width: 18px; height: 18px;
+      background: var(--text-dim);
+      border-radius: 50%;
+      transition: all 0.2s;
+    }
+    .toggle input:checked + .toggle-track {
+      background: var(--accent);
+    }
+    .toggle input:checked + .toggle-track::after {
+      transform: translateX(20px);
+      background: white;
+    }
+    /* Visible but inert: "запускать свёрнутым" only means anything when the
+       app is being started by Windows, so it stays on screen and greys out
+       instead of disappearing when autostart is off. */
+    .toggle input:disabled + .toggle-track {
+      cursor: not-allowed;
+      opacity: 0.35;
+    }
+    .setting-row.disabled .setting-label,
+    .setting-row.disabled .setting-desc {
+      opacity: 0.4;
+    }
+
+    .version {
+      margin-top: auto;
+      padding-top: 12px;
+      padding-bottom: 5px;
+      text-align: center;
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--text-dim);
+    }
+
+    .btn-action {
+      display: flex; align-items: center; justify-content: space-between;
+      width: 100%; padding: 7px 2px;
+      background: none;
+      border: none;
+      cursor: pointer; transition: background 0.15s;
+      font-family: inherit;
+      text-align: left;
+    }
+    .btn-action > div { text-align: left; }
+    .btn-action:hover { background: rgba(255,255,255,0.03); }
+    .btn-action.danger:hover { background: rgba(244,63,94,0.05); }
+    .btn-action-label { font-size: 14px; font-weight: 600; color: var(--text); text-align: left; }
+    .btn-action-desc { font-size: 12px; color: var(--text-dim); line-height: 1.4; margin-top: 2px; text-align: left; }
+    .btn-action.danger .btn-action-label { color: var(--danger); }
+    .btn-action svg { flex-shrink: 0; color: var(--text-muted); }
+
+    /* Confirm overlay */
+    .confirm-overlay {
+      display: none; position: fixed; inset: 0;
+      background: rgba(0,0,0,0.6);
+      align-items: center; justify-content: center; z-index: 200;
+    }
+    .confirm-overlay.open { display: flex; }
+    .confirm-box {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: 14px; padding: 24px 22px; width: 280px;
+    }
+    .confirm-title { font-size: 15px; font-weight: 700; margin-bottom: 8px; }
+    .confirm-text { font-size: 13px; color: var(--text-dim); line-height: 1.5; margin-bottom: 20px; }
+    .confirm-btns { display: flex; gap: 8px; justify-content: flex-end; }
+    .confirm-btns button {
+      height: 36px; padding: 0 18px; border: none; border-radius: 8px;
+      font-family: inherit; font-size: 13px; font-weight: 600; cursor: pointer;
+    }
+    .confirm-cancel { background: rgba(255,255,255,0.06); color: var(--text-dim); }
+    .confirm-cancel:hover { background: rgba(255,255,255,0.1); }
+    .confirm-ok { background: rgba(244,63,94,0.15); color: var(--danger); }
+    .confirm-ok:hover { background: rgba(244,63,94,0.25); }
+  </style>
+</head>
+<body>
+  <div class="titlebar">
+    <span class="titlebar-title">Настройки</span>
+    <div class="titlebar-btns">
+      <button onclick="api.closeSettings()">
+        <svg width="10" height="10" viewBox="0 0 10 10"><path d="M1 1l8 8M9 1l-8 8" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>
+      </button>
+    </div>
+  </div>
+
+  <div class="content">
+    <div class="section-title">Запуск</div>
+
+    <div class="setting-row">
+      <div class="setting-info">
+        <div class="setting-label">Автозапуск</div>
+        <div class="setting-desc">Запускать при старте Windows</div>
+      </div>
+      <label class="toggle">
+        <input type="checkbox" id="autostart" onchange="toggleAutostart()">
+        <span class="toggle-track"></span>
+      </label>
+    </div>
+
+    <div class="setting-row">
+      <div class="setting-info">
+        <div class="setting-label">Автоподключение</div>
+        <div class="setting-desc">Подключаться к VPN при запуске</div>
+      </div>
+      <label class="toggle">
+        <input type="checkbox" id="autoconnect" onchange="toggleAutoconnect()">
+        <span class="toggle-track"></span>
+      </label>
+    </div>
+
+    <div class="setting-row" id="startMinimizedRow">
+      <div class="setting-info">
+        <div class="setting-label">Запускать свёрнутым</div>
+        <div class="setting-desc">При автозапуске сразу в трей, без окна</div>
+      </div>
+      <label class="toggle">
+        <input type="checkbox" id="startMinimized" onchange="toggleStartMinimized()">
+        <span class="toggle-track"></span>
+      </label>
+    </div>
+
+    <div class="section-title">Маршрутизация</div>
+
+    <div class="setting-row" style="cursor:pointer" onclick="api.openWhitelist()">
+      <div class="setting-info">
+        <div class="setting-label">Сайты в обход VPN</div>
+        <div class="setting-desc">Указанные сайты будут открываться напрямую, без VPN</div>
+      </div>
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color:var(--text-dim)">
+        <polyline points="9 18 15 12 9 6"/>
+      </svg>
+    </div>
+
+    <div class="section-title">Конфигурация</div>
+
+    <button class="btn-action" id="changeConfBtn" onclick="doChangeConfig()">
+      <div>
+        <div class="btn-action-label">Сменить конфигурацию</div>
+        <div class="btn-action-desc">Загрузить новый .conf файл</div>
+      </div>
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/>
+        <polyline points="17 8 12 3 7 8"/>
+        <line x1="12" y1="3" x2="12" y2="15"/>
+      </svg>
+    </button>
+
+    <button class="btn-action danger" id="deleteConfBtn" onclick="confirmDeleteConfig()">
+      <div>
+        <div class="btn-action-label">Удалить конфигурацию</div>
+        <div class="btn-action-desc">Потребуется загрузить заново</div>
+      </div>
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <polyline points="3 6 5 6 21 6"/>
+        <path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6"/>
+      </svg>
+    </button>
+
+    <div class="section-title">Обновления</div>
+
+    <div class="setting-row">
+      <div class="setting-info">
+        <div class="setting-label">Не проверять обновления</div>
+      </div>
+      <label class="toggle">
+        <input type="checkbox" id="updateSkipPrompt" onchange="toggleUpdateSkipPrompt()">
+        <span class="toggle-track"></span>
+      </label>
+    </div>
+
+    <button class="btn-action" id="checkUpdateBtn" onclick="doCheckUpdate()">
+      <div>
+        <div class="btn-action-label" id="checkUpdateLabel">Проверить обновление</div>
+        <div class="btn-action-desc" id="checkUpdateDesc">Узнать, доступна ли новая версия</div>
+      </div>
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <polyline points="23 4 23 10 17 10"/>
+        <path d="M20.49 15a9 9 0 11-2.12-9.36L23 10"/>
+      </svg>
+    </button>
+
+    <div class="version" id="version">KitoFtorVPN</div>
+
+    <!-- Confirm delete dialog -->
+    <div class="confirm-overlay" id="confirmOverlay">
+      <div class="confirm-box">
+        <div class="confirm-title">Удалить конфигурацию?</div>
+        <div class="confirm-text">VPN отключится. Чтобы подключиться снова, нужно будет загрузить файл конфигурации заново (его выдаёт администратор).</div>
+        <div class="confirm-btns">
+          <button class="confirm-cancel" onclick="closeConfirm()">Отмена</button>
+          <button class="confirm-ok" onclick="doDeleteConfig()">Удалить</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    async function init() {
+      const hasConf = await api.configExists();
+      document.getElementById('changeConfBtn').style.display = hasConf ? '' : 'none';
+      document.getElementById('deleteConfBtn').style.display = hasConf ? '' : 'none';
+
+      if (api.onConfigChanged) {
+        api.onConfigChanged((p) => {
+          if (!p || typeof p.hasConfig !== 'boolean') return;
+          document.getElementById('changeConfBtn').style.display = p.hasConfig ? '' : 'none';
+          document.getElementById('deleteConfBtn').style.display = p.hasConfig ? '' : 'none';
+        });
+      }
+      const s = await api.getSettings();
+      document.getElementById('autostart').checked = s.autostart || false;
+      document.getElementById('autoconnect').checked = s.autoconnect || false;
+      document.getElementById('startMinimized').checked = s.startMinimized || false;
+      document.getElementById('updateSkipPrompt').checked = s.updateSkipPrompt || false;
+      syncStartMinimizedRow();
+      try {
+        const v = await api.getVersion();
+        document.getElementById('version').textContent = `KitoFtorVPN v${v}`;
+      } catch(e) {
+        document.getElementById('version').textContent = 'KitoFtorVPN';
+      }
+    }
+
+    // Greyed out unless autostart is on, since it has no effect on a launch
+    // the user performed themselves.
+    function syncStartMinimizedRow() {
+      const on = document.getElementById('autostart').checked;
+      document.getElementById('startMinimized').disabled = !on;
+      document.getElementById('startMinimizedRow').classList.toggle('disabled', !on);
+    }
+
+    async function toggleAutostart() {
+      await api.setSettings({ autostart: document.getElementById('autostart').checked });
+      syncStartMinimizedRow();
+    }
+
+    async function toggleStartMinimized() {
+      await api.setSettings({ startMinimized: document.getElementById('startMinimized').checked });
+    }
+
+    async function toggleAutoconnect() {
+      await api.setSettings({ autoconnect: document.getElementById('autoconnect').checked });
+    }
+
+    async function toggleUpdateSkipPrompt() {
+      // Сохраняется автоматически — без отдельной кнопки "Сохранить",
+      // как и остальные переключатели на этом экране.
+      await api.setSettings({ updateSkipPrompt: document.getElementById('updateSkipPrompt').checked });
+    }
+
+    async function doCheckUpdate() {
+      const btn = document.getElementById('checkUpdateBtn');
+      const label = document.getElementById('checkUpdateLabel');
+      const desc = document.getElementById('checkUpdateDesc');
+      const originalLabel = label.textContent;
+      const originalDesc = desc.textContent;
+
+      btn.style.pointerEvents = 'none';
+      label.textContent = 'Проверка...';
+      desc.textContent = 'Это может занять несколько секунд';
+
+      try {
+        const res = await api.updateCheckManual();
+        if (res && res.error) {
+          desc.textContent = 'Не удалось проверить обновление';
+        } else if (res && res.upToDate) {
+          label.textContent = 'У вас последняя версия';
+          desc.textContent = 'Обновления не требуются';
+        } else {
+          // Найдено обновление — окно обновления уже открыто main-процессом.
+          label.textContent = originalLabel;
+          desc.textContent = originalDesc;
+        }
+      } catch(e) {
+        desc.textContent = 'Не удалось проверить обновление';
+      }
+
+      btn.style.pointerEvents = '';
+      setTimeout(() => {
+        label.textContent = originalLabel;
+        desc.textContent = originalDesc;
+      }, 3000);
+    }
+
+    function confirmDeleteConfig() {
+      document.getElementById('confirmOverlay').classList.add('open');
+    }
+
+    function closeConfirm() {
+      document.getElementById('confirmOverlay').classList.remove('open');
+    }
+
+    async function doDeleteConfig() {
+      closeConfirm();
+      await api.deleteConfig();
+      document.getElementById('changeConfBtn').style.display = 'none';
+      document.getElementById('deleteConfBtn').style.display = 'none';
+    }
+
+    async function doChangeConfig() {
+      const res = await api.importConfig();
+      if (res && res.ok) {
+        document.getElementById('changeConfBtn').style.display = '';
+        document.getElementById('deleteConfBtn').style.display = '';
+      }
+    }
+
+    init();
+  </script>
+</body>
+</html>
