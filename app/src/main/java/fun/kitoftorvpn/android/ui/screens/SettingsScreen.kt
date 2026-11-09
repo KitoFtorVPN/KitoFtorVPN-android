@@ -44,7 +44,6 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import `fun`.kitoftorvpn.android.settings.AppPreferences
-import `fun`.kitoftorvpn.android.api.ReferralApi
 import `fun`.kitoftorvpn.android.ui.theme.Accent
 import `fun`.kitoftorvpn.android.ui.theme.AccentBg08
 import `fun`.kitoftorvpn.android.ui.theme.Bg
@@ -60,8 +59,6 @@ import androidx.compose.runtime.LaunchedEffect
 @Composable
 fun SettingsScreen(
     appVersion: String = "1.0",
-    isGuest: Boolean = false,
-    sessionToken: String? = null,
     onBack: () -> Unit = {},
     onOpenWhitelist: () -> Unit = {},
     onOpenAppExclusions: () -> Unit = {},
@@ -76,17 +73,6 @@ fun SettingsScreen(
     var notificationsEnabled by remember { mutableStateOf(AppPreferences.getNotificationsEnabled(context)) }
 
     var showDeleteConfirm by remember { mutableStateOf(false) }
-
-    // Реферальная программа — грузится если не гость
-    var refInfo by remember { mutableStateOf<ReferralApi.RefInfo?>(null) }
-    var refLoading by remember { mutableStateOf(false) }
-    LaunchedEffect(sessionToken, isGuest) {
-        if (!isGuest && !sessionToken.isNullOrEmpty()) {
-            refLoading = true
-            refInfo = ReferralApi.fetchRefInfo(sessionToken)
-            refLoading = false
-        }
-    }
 
     // File picker — тот же подход, что и на главном экране.
     val openDocLauncher = rememberLauncherForActivityResult(
@@ -169,14 +155,14 @@ fun SettingsScreen(
             Card {
                 ActionRow(
                     title = if (hasConfig) "Сменить конфигурацию" else "Загрузить конфигурацию",
-                    subtitle = if (hasConfig) "Заменить текущий .conf" else "Импортировать .conf из файла",
+                    subtitle = if (hasConfig) "Заменить текущий файл .conf на новый" else "Выберите файл .conf, который вам выдал администратор",
                     onClick = { launchConfigPicker() },
                     hasDivider = hasConfig
                 )
                 if (hasConfig) {
                     ActionRow(
                         title = "Удалить конфигурацию",
-                        subtitle = "Стереть сохранённый .conf с устройства",
+                        subtitle = "Удалить сохранённый .conf с этого устройства",
                         danger = true,
                         onClick = { showDeleteConfirm = true },
                         hasDivider = false
@@ -190,28 +176,12 @@ fun SettingsScreen(
             SectionTitle("Уведомления")
             Card {
                 ToggleRow(
-                    title = "Уведомления",
-                    subtitle = "Напоминания о подписке и разрывах VPN",
+                    title = "Уведомление о разрыве",
+                    subtitle = "Сообщать, если VPN неожиданно отключился",
                     checked = notificationsEnabled,
                     onChange = {
                         notificationsEnabled = it
                         AppPreferences.setNotificationsEnabled(context, it)
-                        if (!it) {
-                            `fun`.kitoftorvpn.android.notifications.SubNotificationScheduler.cancelAll(context)
-                        } else {
-                            // При включении — перепланировать из сохранённого expiresAt.
-                            val expiresAt = AppPreferences.getSubExpiresAt(context)
-                            if (expiresAt != null) {
-                                val type = when (AppPreferences.getSubType(context)) {
-                                    "test" -> `fun`.kitoftorvpn.android.api.SubscriptionApi.SubInfo.SubType.TEST
-                                    "sub" -> `fun`.kitoftorvpn.android.api.SubscriptionApi.SubInfo.SubType.SUB
-                                    else -> null
-                                }
-                                `fun`.kitoftorvpn.android.notifications.SubNotificationScheduler.reschedule(
-                                    context, expiresAt, type
-                                )
-                            }
-                        }
                     },
                     hasDivider = false
                 )
@@ -224,13 +194,13 @@ fun SettingsScreen(
             Card {
                 ActionRow(
                     title = "Белый список",
-                    subtitle = "Сайты, трафик к которым пойдёт в обход VPN",
+                    subtitle = "Сайты, которые будут открываться напрямую, без VPN",
                     onClick = onOpenWhitelist,
                     hasDivider = true
                 )
                 ActionRow(
                     title = "Исключения приложений",
-                    subtitle = "Приложения, которые работают без VPN",
+                    subtitle = "Приложения, которые будут работать напрямую, без VPN",
                     onClick = onOpenAppExclusions,
                     hasDivider = false
                 )
@@ -238,109 +208,10 @@ fun SettingsScreen(
 
             Spacer(Modifier.height(20.dp))
 
-            // ─── Раздел: Реферальная программа (только для авторизованных) ──
-            if (!isGuest) {
-                SectionTitle("Реферальная программа")
-                Card {
-                    val info = refInfo
-                    if (refLoading && info == null) {
-                        Text(
-                            "Загрузка...",
-                            color = TextMuted,
-                            fontSize = 14.sp,
-                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 18.dp)
-                        )
-                    } else if (info == null) {
-                        Text(
-                            "Не удалось загрузить реф-ссылку",
-                            color = TextMuted,
-                            fontSize = 14.sp,
-                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 18.dp)
-                        )
-                    } else {
-                        Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp)) {
-                            Text(
-                                "Ваша ссылка",
-                                color = TextMuted,
-                                fontSize = 12.sp,
-                                fontWeight = FontWeight.Medium
-                            )
-                            Spacer(Modifier.height(6.dp))
-                            Text(
-                                info.refLink,
-                                color = Accent,
-                                fontSize = 13.sp,
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .clip(RoundedCornerShape(8.dp))
-                                    .background(AccentBg08)
-                                    .padding(horizontal = 12.dp, vertical = 10.dp)
-                            )
-                            Spacer(Modifier.height(12.dp))
-                            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                                Box(
-                                    modifier = Modifier
-                                        .weight(1f)
-                                        .height(42.dp)
-                                        .clip(RoundedCornerShape(10.dp))
-                                        .background(Surface)
-                                        .border(1.dp, Border, RoundedCornerShape(10.dp))
-                                        .clickable {
-                                            val cm = context.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
-                                            cm.setPrimaryClip(android.content.ClipData.newPlainText("ref", info.refLink))
-                                            android.widget.Toast.makeText(context, "Ссылка скопирована", android.widget.Toast.LENGTH_SHORT).show()
-                                        },
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    Text("Копировать", fontSize = 14.sp, fontWeight = FontWeight.Medium, color = TextMain)
-                                }
-                                Box(
-                                    modifier = Modifier
-                                        .weight(1f)
-                                        .height(42.dp)
-                                        .clip(RoundedCornerShape(10.dp))
-                                        .background(Accent)
-                                        .clickable {
-                                            val share = Intent(Intent.ACTION_SEND).apply {
-                                                type = "text/plain"
-                                                putExtra(Intent.EXTRA_TEXT, "Попробуй KitoFtor VPN: ${info.refLink}")
-                                            }
-                                            try {
-                                                context.startActivity(Intent.createChooser(share, "Поделиться ссылкой"))
-                                            } catch (_: Exception) {}
-                                        },
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    Text("Поделиться", fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = Bg)
-                                }
-                            }
-                        }
-                        Divider()
-                        InfoRow("Приглашено", info.refCount.toString(), hasDivider = true)
-                        InfoRow("Бонусных дней", info.refBonusDays.toString(), hasDivider = false)
-                    }
-                }
-                Spacer(Modifier.height(8.dp))
-                Text(
-                    "За каждого друга, купившего подписку, вы оба получите +7 дней бесплатно.",
-                    color = TextDim,
-                    fontSize = 12.sp,
-                    lineHeight = 17.sp,
-                    modifier = Modifier.padding(horizontal = 4.dp)
-                )
-                Spacer(Modifier.height(20.dp))
-            }
-
             // ─── Раздел: О приложении ──────────────
             SectionTitle("О приложении")
             Card {
-                InfoRow("Версия", "v$appVersion", hasDivider = true)
-                LinkRow(
-                    title = "Сайт",
-                    subtitle = "kitoftorvpn.fun",
-                    onClick = { openUrl(context, "https://kitoftorvpn.fun") },
-                    hasDivider = false
-                )
+                InfoRow("Версия", "v$appVersion", hasDivider = false)
             }
 
             Spacer(Modifier.height(40.dp))
@@ -359,7 +230,7 @@ fun SettingsScreen(
         if (showDeleteConfirm) {
             ConfirmDialog(
                 title = "Удалить конфигурацию?",
-                message = "Сохранённый .conf будет удалён с устройства. Для подключения потребуется загрузить файл заново.",
+                message = "Сохранённый .conf будет удалён с устройства. Чтобы подключиться снова, нужно будет загрузить файл заново.",
                 confirmText = "Удалить",
                 cancelText = "Отмена",
                 danger = true,

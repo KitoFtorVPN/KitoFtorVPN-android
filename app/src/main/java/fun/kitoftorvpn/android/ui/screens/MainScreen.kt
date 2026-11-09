@@ -87,21 +87,11 @@ import `fun`.kitoftorvpn.android.vpn.VpnState as RepoVpnState
 import kotlinx.coroutines.delay
 
 enum class VpnUiState { OFF, CONNECTING, ON }
-enum class SubStatus { LOADING, ACTIVE, EXPIRED, TEST_ENDED, NONE }
 
 @Composable
 fun MainScreen(
-    subStatus: SubStatus = SubStatus.ACTIVE,
-    // Абсолютный timestamp окончания подписки (ms, UTC). Если null — показывается
-    // заглушка. Внутри крутится живой таймер, пересчитывает время раз в секунду.
-    expiresAtMs: Long? = System.currentTimeMillis() + 29L * 86400L * 1000L,
-    isGuest: Boolean = false,
     appVersion: String = "1.0",
     onOpenSettings: () -> Unit = {},
-    onLogout: () -> Unit = {},
-    onExitGuest: () -> Unit = {},
-    onBuySubscription: () -> Unit = {},
-    onRenewSubscription: () -> Unit = {},
     onOpenFaq: () -> Unit = {},
 ) {
     val activity = LocalContext.current as androidx.activity.ComponentActivity
@@ -111,20 +101,6 @@ fun MainScreen(
     val error by vm.lastError.collectAsStateWithLifecycle()
     val hasConfig by vm.hasConfig.collectAsStateWithLifecycle()
     val importMessage by vm.importMessage.collectAsStateWithLifecycle()
-
-    // Живой таймер подписки — ремейнинг время в секундах, обновляется раз в секунду.
-    var nowMs by remember { mutableStateOf(System.currentTimeMillis()) }
-    LaunchedEffect(expiresAtMs) {
-        while (true) {
-            nowMs = System.currentTimeMillis()
-            delay(1000L)
-        }
-    }
-    val expiresInSeconds: Long? = expiresAtMs?.let {
-        val diff = (it - nowMs) / 1000L
-        if (diff < 0L) 0L else diff
-    }
-    val timeLeft: String? = expiresInSeconds?.let { formatRemaining(it) }
 
     val context = LocalContext.current
 
@@ -208,34 +184,12 @@ fun MainScreen(
 
     val uiState = repoState.toUi()
 
-    // Локальная коррекция статуса: если таймер уже добежал до нуля,
-    // показываем "Истекла" моментально, не дожидаясь ответа сервера.
-    // Это убирает мерцание кнопки "Продлить" при открытии после истечения.
-    val effectiveSubStatus = if (
-        !isGuest &&
-        subStatus == SubStatus.ACTIVE &&
-        expiresInSeconds != null && expiresInSeconds <= 0L
-    ) SubStatus.EXPIRED else subStatus
-
-    // Автоотключение VPN при истечении подписки
-    LaunchedEffect(effectiveSubStatus) {
-        if (effectiveSubStatus == SubStatus.EXPIRED || effectiveSubStatus == SubStatus.TEST_ENDED || effectiveSubStatus == SubStatus.NONE) {
-            if (uiState != VpnUiState.OFF) {
-                `fun`.kitoftorvpn.android.vpn.VpnRepository.disconnect()
-            }
-        }
-    }
-
     MainScreenStateless(
         vpnState = uiState,
         timerSeconds = timer,
         errorText = error,
         importMessage = importMessage,
         hasConfig = hasConfig,
-        subStatus = effectiveSubStatus,
-        timeLeft = timeLeft,
-        expiresInSeconds = expiresInSeconds,
-        isGuest = isGuest,
         appVersion = appVersion,
         onToggleVpn = {
             if (uiState == VpnUiState.ON) {
@@ -253,10 +207,6 @@ fun MainScreen(
         onDeleteConfig = { vm.deleteConfig() },
         onDismissImportMessage = { vm.clearImportMessage() },
         onOpenSettings = onOpenSettings,
-        onLogout = onLogout,
-        onExitGuest = onExitGuest,
-        onBuySubscription = onBuySubscription,
-        onRenewSubscription = onRenewSubscription,
         onOpenFaq = onOpenFaq,
     )
 }
@@ -274,10 +224,6 @@ fun MainScreenStateless(
     errorText: String?,
     importMessage: String?,
     hasConfig: Boolean,
-    subStatus: SubStatus,
-    timeLeft: String?,
-    expiresInSeconds: Long?,
-    isGuest: Boolean,
     appVersion: String,
     onToggleVpn: () -> Unit,
     onDismissError: () -> Unit,
@@ -285,10 +231,6 @@ fun MainScreenStateless(
     onDeleteConfig: () -> Unit,
     onDismissImportMessage: () -> Unit,
     onOpenSettings: () -> Unit,
-    onLogout: () -> Unit,
-    onExitGuest: () -> Unit,
-    onBuySubscription: () -> Unit,
-    onRenewSubscription: () -> Unit,
     onOpenFaq: () -> Unit,
 ) {
     var menuOpen by remember { mutableStateOf(false) }
@@ -399,22 +341,12 @@ fun MainScreenStateless(
                             onDismissRequest = { menuOpen = false }
                         ) {
                             DropdownContent(
-                                isGuest = isGuest,
                                 onOpenFaq = { menuOpen = false; onOpenFaq() },
                                 onOpenSettings = { menuOpen = false; onOpenSettings() },
-                                onLogout = { menuOpen = false; onLogout() },
-                                onExitGuest = { menuOpen = false; onExitGuest() }
                             )
                         }
                     }
                 }
-            }
-
-            // ─── Top status card (1 строка для расчёта позиции) ─────
-            if (isGuest) {
-                GuestStatusCard()
-            } else {
-                SubscriptionCardCompact(status = subStatus)
             }
 
             // ─── Центр ───────────────────────────────
@@ -423,16 +355,7 @@ fun MainScreenStateless(
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.Center
             ) {
-                val canConnect = subStatus == SubStatus.ACTIVE
-
                 when {
-                    subStatus == SubStatus.LOADING -> {}
-
-                    !canConnect -> DisabledPowerWithRenew(
-                        subStatus = subStatus,
-                        onAction = if (subStatus == SubStatus.NONE) onBuySubscription else onRenewSubscription
-                    )
-
                     !hasConfig -> ImportPrompt(onImport = onImportConfig)
 
                     else -> PowerSection(
@@ -443,24 +366,6 @@ fun MainScreenStateless(
                         onDismissError = onDismissError,
                     )
                 }
-            }
-        }
-
-        // ─── Полная карточка подписки (overlay сверху, не влияет на layout) ───
-        if (!isGuest) {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 28.dp)
-                    .padding(top = 64.dp),
-                horizontalAlignment = Alignment.CenterHorizontally
-            ) {
-                SubscriptionCard(
-                    status = subStatus,
-                    timeLeft = timeLeft,
-                    expiresInSeconds = expiresInSeconds,
-                    onRenew = onRenewSubscription
-                )
             }
         }
 
@@ -498,146 +403,6 @@ fun MainScreenStateless(
 }
 
 // ─── Status card ─────────────────────────────────────────
-
-@Composable
-private fun SubscriptionCard(
-    status: SubStatus,
-    timeLeft: String?,
-    expiresInSeconds: Long?,
-    onRenew: () -> Unit
-) {
-    val (statusText, statusColor) = when (status) {
-        SubStatus.LOADING -> "Загрузка..." to TextMuted
-        SubStatus.ACTIVE -> "Активна" to Accent
-        SubStatus.EXPIRED -> "Истекла" to Danger
-        SubStatus.TEST_ENDED -> "Тест завершён" to Danger
-        SubStatus.NONE -> "Нет подписки" to TextMuted
-    }
-
-    val isExpiring = expiresInSeconds != null && expiresInSeconds in 1L..259_200L
-    val timeColor = if (isExpiring) Danger else TextMain
-
-    // Показываем строку "Осталось" только при активной подписке и положительном времени.
-    val showTimeRow = status == SubStatus.ACTIVE &&
-            timeLeft != null &&
-            (expiresInSeconds == null || expiresInSeconds > 0L)
-
-    Column(modifier = Modifier.fillMaxWidth()) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .clip(RoundedCornerShape(14.dp))
-                .background(Surface)
-                .border(1.dp, Border, RoundedCornerShape(14.dp))
-                .padding(horizontal = 20.dp)
-        ) {
-            StatusRow("Подписка", statusText, statusColor, hasDivider = showTimeRow || (isExpiring && status == SubStatus.ACTIVE))
-            if (showTimeRow) {
-                StatusRow("Осталось", timeLeft!!, timeColor, hasDivider = isExpiring && status == SubStatus.ACTIVE)
-            }
-            if (isExpiring && status == SubStatus.ACTIVE) {
-                Row(
-                    modifier = Modifier.fillMaxWidth().padding(vertical = 14.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text("Подписка заканчивается", fontSize = 15.sp, color = Danger)
-                    Text(
-                        "Продлить",
-                        fontSize = 15.sp,
-                        color = Danger,
-                        fontWeight = FontWeight.SemiBold,
-                        textDecoration = TextDecoration.Underline,
-                        modifier = Modifier.clickable(onClick = onRenew)
-                    )
-                }
-            }
-        }
-    }
-}
-
-// Компактная карточка — только 1 строка "Подписка — статус" (как GuestStatusCard)
-@Composable
-private fun SubscriptionCardCompact(status: SubStatus) {
-    val (statusText, statusColor) = when (status) {
-        SubStatus.LOADING -> "Загрузка..." to TextMuted
-        SubStatus.ACTIVE -> "Активна" to Accent
-        SubStatus.EXPIRED -> "Истекла" to Danger
-        SubStatus.TEST_ENDED -> "Тест завершён" to Danger
-        SubStatus.NONE -> "Нет подписки" to TextMuted
-    }
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(14.dp))
-            .background(Surface)
-            .border(1.dp, Border, RoundedCornerShape(14.dp))
-            .padding(horizontal = 20.dp)
-    ) {
-        StatusRow("Подписка", statusText, statusColor, hasDivider = false)
-    }
-}
-
-// Доп. инфо — "Осталось" и "Заканчивается" — показывается в центре, над кнопкой
-@Composable
-private fun SubscriptionExtraInfo(
-    status: SubStatus,
-    timeLeft: String?,
-    expiresInSeconds: Long?,
-    onRenew: () -> Unit
-) {
-    val isExpiring = expiresInSeconds != null && expiresInSeconds in 1L..259_200L
-    val timeColor = if (isExpiring) Danger else TextMain
-    val showTimeRow = status == SubStatus.ACTIVE &&
-            timeLeft != null &&
-            (expiresInSeconds == null || expiresInSeconds > 0L)
-
-    if (showTimeRow || (isExpiring && status == SubStatus.ACTIVE)) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .clip(RoundedCornerShape(14.dp))
-                .background(Surface)
-                .border(1.dp, Border, RoundedCornerShape(14.dp))
-                .padding(horizontal = 20.dp)
-        ) {
-            if (showTimeRow) {
-                StatusRow("Осталось", timeLeft!!, timeColor, hasDivider = isExpiring && status == SubStatus.ACTIVE)
-            }
-            if (isExpiring && status == SubStatus.ACTIVE) {
-                Row(
-                    modifier = Modifier.fillMaxWidth().padding(vertical = 14.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text("Подписка заканчивается", fontSize = 15.sp, color = Danger)
-                    Text(
-                        "Продлить",
-                        fontSize = 15.sp,
-                        color = Danger,
-                        fontWeight = FontWeight.SemiBold,
-                        textDecoration = TextDecoration.Underline,
-                        modifier = Modifier.clickable(onClick = onRenew)
-                    )
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun GuestStatusCard() {
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(14.dp))
-            .background(Surface)
-            .border(1.dp, Border, RoundedCornerShape(14.dp))
-            .padding(horizontal = 20.dp)
-    ) {
-        StatusRow("Режим", "Гостевой", TextMain, hasDivider = false)
-    }
-}
 
 @Composable
 private fun StatusRow(
@@ -906,22 +671,6 @@ private fun ImportPrompt(onImport: () -> Unit) {
     }
 }
 
-@Composable
-private fun DisabledPowerWithRenew(subStatus: SubStatus, onAction: () -> Unit) {
-    val label = if (subStatus == SubStatus.NONE) "Оформить подписку" else "Продлить подписку"
-    Box(
-        modifier = Modifier
-            .height(56.dp)
-            .clip(RoundedCornerShape(14.dp))
-            .background(Accent)
-            .clickable(onClick = onAction)
-            .padding(horizontal = 36.dp),
-        contentAlignment = Alignment.Center
-    ) {
-        Text(label, fontSize = 17.sp, fontWeight = FontWeight.Bold, color = Bg)
-    }
-}
-
 /**
  * Toast импорта — показывается внизу экрана, автозакрывается через 4 секунды.
  * Цвет зависит от содержимого (успех/ошибка).
@@ -996,11 +745,8 @@ private fun MenuButton(onClick: () -> Unit) {
 
 @Composable
 private fun DropdownContent(
-    isGuest: Boolean,
     onOpenFaq: () -> Unit,
     onOpenSettings: () -> Unit,
-    onLogout: () -> Unit,
-    onExitGuest: () -> Unit,
 ) {
     Column(
         modifier = Modifier
@@ -1012,11 +758,6 @@ private fun DropdownContent(
     ) {
         MenuItem(text = "Помощь", icon = helpVector(TextDim), onClick = onOpenFaq)
         MenuItem(text = "Настройки", icon = settingsVector(TextDim), onClick = onOpenSettings)
-        if (isGuest) {
-            MenuItem(text = "Войти в аккаунт", icon = loginVector(TextDim), onClick = onExitGuest)
-        } else {
-            MenuItem(text = "Выйти из аккаунта", icon = logoutVector(Danger), onClick = onLogout, danger = true)
-        }
     }
 }
 

@@ -77,7 +77,7 @@ object ConfigStore {
         val hasPeer = Regex("""(?im)^\s*\[\s*Peer\s*\]""").containsMatchIn(trimmed)
         if (!hasInterface || !hasPeer) {
             Log.w(TAG, "saveConfig: invalid format (hasInterface=$hasInterface, hasPeer=$hasPeer, len=${trimmed.length})")
-            return "Неверный формат файла. Нужен .conf файл из личного кабинета."
+            return "Неверный формат файла. Нужен .conf файл, который выдал администратор."
         }
         return try {
             getPrefs(context).edit().putString(KEY_CONFIG, trimmed).apply()

@@ -4,19 +4,19 @@ plugins {
 }
 
 kotlin {
-    jvmToolchain(17)
+    jvmToolchain(21)
 }
 
 android {
     namespace = "fun.kitoftorvpn.android"
-    compileSdk = 36
+    compileSdk = 37
 
     defaultConfig {
         applicationId = "fun.kitoftorvpn.android"
         minSdk = 26
         targetSdk = 36
-        versionCode = 5
-        versionName = "1.1.3"
+        versionCode = 6
+        versionName = "1.2.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -31,8 +31,8 @@ android {
         }
     }
     compileOptions {
-        sourceCompatibility = JavaVersion.VERSION_17
-        targetCompatibility = JavaVersion.VERSION_17
+        sourceCompatibility = JavaVersion.VERSION_21
+        targetCompatibility = JavaVersion.VERSION_21
         isCoreLibraryDesugaringEnabled = true
     }
     buildFeatures {
@@ -54,9 +54,11 @@ dependencies {
 	implementation(libs.androidx.lifecycle.viewmodel.compose)
 	implementation(libs.androidx.lifecycle.runtime.compose)
 	implementation(libs.androidx.security.crypto)
-	implementation(libs.androidx.browser)
 
-    implementation(libs.amneziawg.android)
+    implementation(libs.wgtunnel.backend) {
+        // Конфликт с tink-android из security-crypto: оставляем одну копию.
+        exclude(group = "com.google.crypto.tink", module = "tink")
+    }
     coreLibraryDesugaring(libs.desugar.jdk.libs)
 
     testImplementation(libs.junit)

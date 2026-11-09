@@ -1,17 +1,16 @@
 # KitoFtorVPN Android
 
-Android-клиент KitoFtorVPN на базе AmneziaWG 2.0.
+Android-клиент KitoFtorVPN на базе AmneziaWG. Поддерживает конфигурации AmneziaWG 2.0 и 3.1.
 
 ## Возможности
 
 * Подключение к VPN одним нажатием
+* Импорт конфигурации из файла `.conf`
 * Обход VPN для выбранных сайтов (split tunneling)
 * Исключение приложений из VPN-туннеля
-* Уведомления об окончании подписки
+* Уведомление о неожиданном разрыве соединения
 * Плитка быстрых настроек (Quick Settings Tile) для управления VPN из шторки
-* Хранение конфигов и токенов с шифрованием AES-256-GCM (Android Keystore)
-* Авторизация: email, Google, гостевой режим
-* Реферальная программа
+* Хранение конфигурации с шифрованием AES-256-GCM (Android Keystore)
 * Автообновления через GitHub Releases
 
 ## Установка
@@ -20,6 +19,8 @@ Android-клиент KitoFtorVPN на базе AmneziaWG 2.0.
 
 При первой установке Android попросит разрешение на установку приложений из этого источника — это нормально.
 
+Файл конфигурации (`.conf`) выдаёт администратор. Один конфиг — одно устройство.
+
 ## Требования
 
 * Android 8.0 (API 26) и выше
@@ -27,14 +28,14 @@ Android-клиент KitoFtorVPN на базе AmneziaWG 2.0.
 ## Стек
 
 * [Kotlin](https://kotlinlang.org/) + [Jetpack Compose](https://developer.android.com/jetpack/compose) — UI
-* [amneziawg-android](https://github.com/amnezia-vpn/amneziawg-android) — VPN-движок
+* [WG Tunnel Core](https://github.com/wgtunnel/core) — VPN-движок (WireGuard / AmneziaWG)
 * [AndroidX Security Crypto](https://developer.android.com/jetpack/androidx/releases/security) — шифрование хранилища
 * [Navigation Compose](https://developer.android.com/jetpack/compose/navigation) — навигация
 * [Gradle](https://gradle.org/) — сборка
 
 ## Сборка из исходников
 
-Требуется Android Studio (Iguana или новее) и JDK 17.
+Требуется свежая Android Studio и JDK 21.
 
 ```
 # Открыть проект в Android Studio
@@ -58,9 +59,7 @@ KitoFtorVPN-android/
 │       ├── AndroidManifest.xml
 │       ├── java/fun/kitoftorvpn/android/
 │       │   ├── MainActivity.kt
-│       │   ├── api/             — клиент API кабинета (sub, referral)
-│       │   ├── auth/            — OAuth-флоу через браузер
-│       │   ├── notifications/   — напоминания о подписке (AlarmManager)
+│       │   ├── notifications/   — уведомление о разрыве соединения
 │       │   ├── perapp/          — исключения приложений из VPN
 │       │   ├── settings/        — AppPreferences
 │       │   ├── storage/         — ConfigStore (зашифрованное хранилище)
@@ -72,7 +71,3 @@ KitoFtorVPN-android/
 ├── app/build.gradle.kts         — конфиг сборки
 └── gradle/libs.versions.toml    — зависимости
 ```
-
-## Сайт
-
-[kitoftorvpn.fun](https://kitoftorvpn.fun)

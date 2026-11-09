@@ -1,5 +1,6 @@
 package `fun`.kitoftorvpn.android.vpn
 
+import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
@@ -18,10 +19,8 @@ import kotlinx.coroutines.launch
 /**
  * Уведомление в шторке про активный VPN + кнопка "Отключить".
  *
- * Библиотека amneziawg-android сама держит свой сервис как foreground
- * (foregroundServiceType=systemExempted, см. манифест), поэтому мы не делаем
- * собственный foreground — только показываем своё информативное уведомление,
- * которое юзер может использовать для быстрого отключения.
+ * Движок (WG Tunnel Core) сам держит foreground-сервис и берёт это
+ * уведомление через build(). Кнопка "Отключить" ведёт в VpnControlReceiver.
  *
  * Уведомление:
  *   - несъёмное (ongoing), пока VPN активен
@@ -32,9 +31,9 @@ object VpnNotification {
 
     private const val CHANNEL_ID = "kitoftorvpn_status"
     private const val CHANNEL_NAME = "Статус подключения"
-    private const val NOTIFICATION_ID = 101
+    const val NOTIFICATION_ID = 101
 
-    fun show(context: Context) {
+    fun build(context: Context, text: String = "Подключён"): Notification {
         val ctx = context.applicationContext
         ensureChannel(ctx)
 
@@ -56,20 +55,23 @@ object VpnNotification {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 
-        val notif = NotificationCompat.Builder(ctx, CHANNEL_ID)
+        return NotificationCompat.Builder(ctx, CHANNEL_ID)
             .setSmallIcon(R.mipmap.ic_launcher)
             .setContentTitle("KitoFtorVPN")
-            .setContentText("Подключён")
-            .setOngoing(true)             // несъёмное
+            .setContentText(text)
+            .setOngoing(true)
             .setOnlyAlertOnce(true)
             .setCategory(NotificationCompat.CATEGORY_SERVICE)
-            .setPriority(NotificationCompat.PRIORITY_LOW)   // без звука
+            .setPriority(NotificationCompat.PRIORITY_LOW)
             .setContentIntent(openPI)
             .addAction(0, "Отключить", disconnectPI)
             .build()
+    }
 
-        val nm = ctx.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-        nm.notify(NOTIFICATION_ID, notif)
+    fun show(context: Context) {
+        val nm = context.applicationContext
+            .getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        nm.notify(NOTIFICATION_ID, build(context))
     }
 
     fun hide(context: Context) {

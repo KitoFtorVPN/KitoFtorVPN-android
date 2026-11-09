@@ -7,11 +7,6 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SYSTEM_EXEMPTED" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
-    <!-- Точные alarm'ы для напоминаний о подписке (Android 12+ / 13+). -->
-    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
-    <uses-permission android:name="android.permission.USE_EXACT_ALARM" />
-    <!-- Восстановление алармов после перезагрузки устройства. -->
-    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <!-- Dlya ekrana "Isklyucheniya prilozheniy" - perechislenie ustanovlennyh prilozheniy. -->
     <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES" />
 
@@ -54,12 +49,6 @@
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
-            <intent-filter android:autoVerify="false">
-                <action android:name="android.intent.action.VIEW" />
-                <category android:name="android.intent.category.DEFAULT" />
-                <category android:name="android.intent.category.BROWSABLE" />
-                <data android:scheme="kitoftorvpn" android:host="auth" />
-            </intent-filter>
         </activity>
 
         <!-- Quick Settings Tile (плитка в шторке для вкл/выкл VPN). -->
@@ -94,35 +83,7 @@
             android:name=".vpn.VpnControlReceiver"
             android:exported="false" />
 
-        <!-- Срабатывание alarm'а напоминания о подписке. -->
-        <receiver
-            android:name=".notifications.SubAlarmReceiver"
-            android:exported="false">
-            <intent-filter>
-                <action android:name="fun.kitoftorvpn.android.SUB_ALARM_FIRE" />
-            </intent-filter>
-        </receiver>
 
-        <!-- Восстановление алармов после ребута устройства. -->
-        <receiver
-            android:name=".notifications.BootReceiver"
-            android:exported="true">
-            <intent-filter>
-                <action android:name="android.intent.action.BOOT_COMPLETED" />
-                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
-                <action android:name="android.intent.action.QUICKBOOT_POWERON" />
-            </intent-filter>
-        </receiver>
-
-        <service
-            android:name="org.amnezia.awg.backend.GoBackend$VpnService"
-            android:exported="false"
-            android:permission="android.permission.BIND_VPN_SERVICE"
-            android:foregroundServiceType="systemExempted">
-            <intent-filter>
-                <action android:name="android.net.VpnService" />
-            </intent-filter>
-        </service>
 
         <!-- FileProvider dlya ustanovki skachannogo APK. -->
         <provider
